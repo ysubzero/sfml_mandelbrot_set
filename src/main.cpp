@@ -12,7 +12,7 @@ private:
 	int topbound = 2;
 	int startbound = -2;
 	double bound = 4;
-	int maxiter = 1024;
+	int maxiter = 2048;
 
 	std::vector<Complex> set;
 	std::vector<int> inset;
@@ -22,8 +22,6 @@ private:
 public:
 
 	std::vector<uint8_t> bitmap;
-
-	std::atomic<uint32_t> done = 0;
 	
 	mandelbrot(int X, int Y):
 		numX(X),
@@ -31,7 +29,7 @@ public:
 	{
 		num = numX * numY;
 		set.resize(num);
-		inset.resize(num, 1);
+		inset.resize(num, maxiter);
 	}
 
 	void threaded_emplacement(const int& start, const int& end)
@@ -40,29 +38,17 @@ public:
 		{
 			Complex c = set[i];
 			Complex z = Complex(0, 0);
-			bool diverge = false;
 			for (int iter = 1; iter < maxiter; iter++)
 			{
 				if (z.sqr_magnitude() >= bound)
 				{
-					diverge = true;
 					inset[i] = iter;
 					break;
 				}
 				z = z * z + c;
 			}
-			if (!diverge)
-			{
-				std::lock_guard<std::mutex> lock(mtx);
-				inset[i] = maxiter;
-			}
-			done++;
 		}
 		std::cout << "Thread done.\n";
-		while (done > set.size())
-		{
-			std::this_thread::yield();
-		}
 	}
 
 	void calculate(std::vector<std::thread>& threads)
@@ -99,8 +85,6 @@ public:
 				t.join();
 			}
 		}
-
-		threads.erase(threads.begin(), threads.end());
 
 		std::cout << "done mandelbrot calculating \n";
 
@@ -384,8 +368,8 @@ int main()
 	int resX = 1200;
 	int resY = 1200;
 
-	int mandelbrotX = 12000;
-	int mandelbrotY = 12000;
+	int mandelbrotX = 24000;
+	int mandelbrotY = 24000;
 
 	sf::Image image;
 	image.create(mandelbrotX, mandelbrotY, sf::Color::Black);
