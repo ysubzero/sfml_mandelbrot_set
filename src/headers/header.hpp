@@ -11,6 +11,7 @@
 #include <thread>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <mutex>
 #include <atomic>
 #include <condition_variable>

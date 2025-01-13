@@ -1,7 +1,5 @@
 #include "headers/header.hpp"
 
-bool usegoodcolor = true;
-
 class mandelbrot
 {
 private:
@@ -19,23 +17,36 @@ private:
 
 	std::mutex mtx;
 
+	bool usegoodcolor;
+	bool save;
+
 public:
+
+	std::atomic<int> currentidx = 0;
 
 	std::vector<uint8_t> bitmap;
 	
-	mandelbrot(int X, int Y):
+	mandelbrot(int X, int Y, bool _usegoodcolor, bool _save):
 		numX(X),
-		numY(Y)
+		numY(Y),
+		usegoodcolor(_usegoodcolor),
+		save(_save)
 	{
 		num = numX * numY;
 		set.resize(num);
 		inset.resize(num, maxiter);
 	}
 
-	void threaded_emplacement(const int& start, const int& end)
+	void threaded_emplacement()
 	{
-		for (int i = start; i < end; i++)
+		while (true)
 		{
+			int i = currentidx.fetch_add(1);
+			if (i >= set.size())
+			{
+				break;
+			}
+
 			Complex c = set[i];
 			Complex z = Complex(0, 0);
 			for (int iter = 1; iter < maxiter; iter++)
@@ -68,14 +79,7 @@ public:
 
 		for (int i = 0; i < threads.size(); i++)
 		{
-			int start = i * (set.size() / threads.size());
-			int end = (i+1) * (set.size() / threads.size());
-			if (i + 1 == threads.size())
-			{
-				end = set.size();
-			}
-
-			threads[i] = std::thread(&mandelbrot::threaded_emplacement, this, start, end);
+			threads[i] = std::thread(&mandelbrot::threaded_emplacement, this);
 		}
 
 		for (auto& t : threads)
@@ -92,101 +96,104 @@ public:
 
 	void draw(sf::Image& image, std::string& filename)
 	{
-		uint16_t  type = 0x4D42;
-		uint16_t  reserved1 = 0;
-		uint16_t  reserved2 = 0;
-		uint32_t  offset = 54;
-		uint32_t  dib_header_size = 40;
-		int32_t   width_px = numX;
-		int32_t   height_px = numY;
-		uint16_t  num_planes = 1;
-		uint16_t  bits_per_pixel = 24;
-		uint32_t  compression = 0;
-		uint32_t  image_size_bytes = numX * numY * 3;
-		uint32_t  size = image_size_bytes + 54;
+		if (save)
+		{
+			uint16_t  type = 0x4D42;
+			uint16_t  reserved1 = 0;
+			uint16_t  reserved2 = 0;
+			uint32_t  offset = 54;
+			uint32_t  dib_header_size = 40;
+			int32_t   width_px = numX;
+			int32_t   height_px = numY;
+			uint16_t  num_planes = 1;
+			uint16_t  bits_per_pixel = 24;
+			uint32_t  compression = 0;
+			uint32_t  image_size_bytes = numX * numY * 3;
+			uint32_t  size = image_size_bytes + 54;
 
-		float image_aspect_ratio = static_cast<float>(numX) /
-			static_cast<float>(numY);
+			float image_aspect_ratio = static_cast<float>(numX) /
+				static_cast<float>(numY);
 
-		float print_width_meters = 0.2f;
+			float print_width_meters = 0.2f;
 
-		float print_height_meters = print_width_meters / image_aspect_ratio;
+			float print_height_meters = print_width_meters / image_aspect_ratio;
 
-		int32_t x_resolution_ppm = static_cast<int32_t>(numX / print_width_meters);
-		int32_t y_resolution_ppm = static_cast<int32_t>(numX / print_height_meters);
+			int32_t x_resolution_ppm = static_cast<int32_t>(numX / print_width_meters);
+			int32_t y_resolution_ppm = static_cast<int32_t>(numX / print_height_meters);
 
-		uint32_t  num_colors = 0;
-		uint32_t  important_colors = 0;
+			uint32_t  num_colors = 0;
+			uint32_t  important_colors = 0;
 
-		bitmap.push_back((uint8_t)(type & 0xFF));
-		bitmap.push_back((uint8_t)((type >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(type & 0xFF));
+			bitmap.push_back((uint8_t)((type >> 8) & 0xFF));
 
-		bitmap.push_back((uint8_t)(size & 0xFF));
-		bitmap.push_back((uint8_t)((size >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((size >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((size >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(size & 0xFF));
+			bitmap.push_back((uint8_t)((size >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((size >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((size >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)(reserved1 & 0xFF));
-		bitmap.push_back((uint8_t)((reserved1 >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(reserved1 & 0xFF));
+			bitmap.push_back((uint8_t)((reserved1 >> 8) & 0xFF));
 
-		bitmap.push_back((uint8_t)(reserved2 & 0xFF));
-		bitmap.push_back((uint8_t)((reserved2 >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(reserved2 & 0xFF));
+			bitmap.push_back((uint8_t)((reserved2 >> 8) & 0xFF));
 
-		bitmap.push_back((uint8_t)(offset & 0xFF));
-		bitmap.push_back((uint8_t)((offset >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((offset >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((offset >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(offset & 0xFF));
+			bitmap.push_back((uint8_t)((offset >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((offset >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((offset >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)(dib_header_size & 0xFF));
-		bitmap.push_back((uint8_t)((dib_header_size >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((dib_header_size >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((dib_header_size >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(dib_header_size & 0xFF));
+			bitmap.push_back((uint8_t)((dib_header_size >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((dib_header_size >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((dib_header_size >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)((width_px) & 0xFF));
-		bitmap.push_back((uint8_t)(((width_px) >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)(((width_px) >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)(((width_px) >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)((width_px) & 0xFF));
+			bitmap.push_back((uint8_t)(((width_px) >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(((width_px) >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)(((width_px) >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)((height_px) & 0xFF));
-		bitmap.push_back((uint8_t)(((height_px) >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)(((height_px) >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)(((height_px) >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)((height_px) & 0xFF));
+			bitmap.push_back((uint8_t)(((height_px) >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(((height_px) >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)(((height_px) >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)(num_planes & 0xFF));
-		bitmap.push_back((uint8_t)((num_planes >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(num_planes & 0xFF));
+			bitmap.push_back((uint8_t)((num_planes >> 8) & 0xFF));
 
-		bitmap.push_back((uint8_t)(bits_per_pixel & 0xFF));
-		bitmap.push_back((uint8_t)((bits_per_pixel >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(bits_per_pixel & 0xFF));
+			bitmap.push_back((uint8_t)((bits_per_pixel >> 8) & 0xFF));
 
-		bitmap.push_back((uint8_t)(compression & 0xFF));
-		bitmap.push_back((uint8_t)((compression >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((compression >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((compression >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(compression & 0xFF));
+			bitmap.push_back((uint8_t)((compression >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((compression >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((compression >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)(image_size_bytes & 0xFF));
-		bitmap.push_back((uint8_t)((image_size_bytes >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((image_size_bytes >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((image_size_bytes >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(image_size_bytes & 0xFF));
+			bitmap.push_back((uint8_t)((image_size_bytes >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((image_size_bytes >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((image_size_bytes >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)((x_resolution_ppm) & 0xFF));
-		bitmap.push_back((uint8_t)(((x_resolution_ppm) >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)(((x_resolution_ppm) >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)(((x_resolution_ppm) >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)((x_resolution_ppm) & 0xFF));
+			bitmap.push_back((uint8_t)(((x_resolution_ppm) >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(((x_resolution_ppm) >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)(((x_resolution_ppm) >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)((y_resolution_ppm) & 0xFF));
-		bitmap.push_back((uint8_t)(((y_resolution_ppm) >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)(((y_resolution_ppm) >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)(((y_resolution_ppm) >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)((y_resolution_ppm) & 0xFF));
+			bitmap.push_back((uint8_t)(((y_resolution_ppm) >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)(((y_resolution_ppm) >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)(((y_resolution_ppm) >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)(num_colors & 0xFF));
-		bitmap.push_back((uint8_t)((num_colors >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((num_colors >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((num_colors >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(num_colors & 0xFF));
+			bitmap.push_back((uint8_t)((num_colors >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((num_colors >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((num_colors >> 24) & 0xFF));
 
-		bitmap.push_back((uint8_t)(important_colors & 0xFF));
-		bitmap.push_back((uint8_t)((important_colors >> 8) & 0xFF));
-		bitmap.push_back((uint8_t)((important_colors >> 16) & 0xFF));
-		bitmap.push_back((uint8_t)((important_colors >> 24) & 0xFF));
+			bitmap.push_back((uint8_t)(important_colors & 0xFF));
+			bitmap.push_back((uint8_t)((important_colors >> 8) & 0xFF));
+			bitmap.push_back((uint8_t)((important_colors >> 16) & 0xFF));
+			bitmap.push_back((uint8_t)((important_colors >> 24) & 0xFF));
+		}
 
 		sf::Color mapping[16];
 		mapping[0] = sf::Color(70, 30, 10, 255);
@@ -233,10 +240,12 @@ public:
 
 					image.setPixel(i, j, color);
 
-
-					bitmap.push_back(b);
-					bitmap.push_back(g);
-					bitmap.push_back(r);
+					if (save)
+					{
+						bitmap.push_back(b);
+						bitmap.push_back(g);
+						bitmap.push_back(r);
+					}
 				}
 				else
 				{
@@ -298,23 +307,29 @@ public:
 					sf::Color color = sf::Color(r, g, b, 255);
 					image.setPixel(i, j, color);
 
-					bitmap.push_back(b);
-					bitmap.push_back(g);
-					bitmap.push_back(r);
+					if (save)
+					{
+						bitmap.push_back(b);
+						bitmap.push_back(g);
+						bitmap.push_back(r);
+					}
 				}
 
 			}
 		}
 
-		std::ofstream outputFile(filename, std::ios::binary);
-
-		if (outputFile.is_open()) {
-			outputFile.write(reinterpret_cast<const char*>(bitmap.data()), bitmap.size());
-			outputFile.close();
-		}
-		else 
+		if (save)
 		{
-			std::cerr << "Error: Could not open output file." << std::endl;
+			std::ofstream outputFile(filename, std::ios::binary);
+
+			if (outputFile.is_open()) {
+				outputFile.write(reinterpret_cast<const char*>(bitmap.data()), bitmap.size());
+				outputFile.close();
+			}
+			else
+			{
+				std::cerr << "Error: Could not open output file." << std::endl;
+			}
 		}
 
 		std::cout << "done drawing \n";
@@ -352,15 +367,39 @@ void checkinput(sf::RenderWindow& window, float& zoomFactor, int& deltaY, int& d
 
 int main()
 {
+	std::ifstream IfFile;
+
+	bool usegoodcolor;
+	bool save;
+
+	std::cout << "Use Custom Colors?\n";
+	while (!(std::cin >> usegoodcolor) || (usegoodcolor != 0 && usegoodcolor != 1)) 
+	{
+		std::cout << "Invalid input. Please enter 1 for custom colors or 0 if not.\n";
+		std::cin.clear();
+		std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+	}
+
+	std::cout << "Save?\n";
+	while (!(std::cin >> save) || (save != 0 && save != 1)) 
+	{
+		std::cout << "Invalid input. Please enter 1 for saving to bmp or 0 if not.\n";
+		std::cin.clear();
+		std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+	}
+
 	std::string filename;
-	if (usegoodcolor)
-	{
-		filename = "D:\\source\\mandelbrot_set\\mandelbrot.bmp";
+
+	std::cout << "Input your folder. use double backslashes thanks! Yes you will still have to input this even if you do not choose save! Will work on that.\n";
+
+	std::cin >> filename;
+
+	if (!std::filesystem::exists(filename)) {
+		std::filesystem::create_directory(filename);
 	}
-	else
-	{
-		filename = "D:\\source\\mandelbrot_set\\mandelbrot_basic.bmp";
-	}
+
+	filename += "\\output.bmp";
+
 
 	uint32_t max_threads = std::thread::hardware_concurrency();
 	std::vector<std::thread> threads;
@@ -373,9 +412,10 @@ int main()
 
 	sf::Image image;
 	image.create(mandelbrotX, mandelbrotY, sf::Color::Black);
-	mandelbrot mb(mandelbrotX, mandelbrotY);
-	mb.calculate(threads);
-	mb.draw(image, filename);
+	mandelbrot* mb = new mandelbrot(mandelbrotX, mandelbrotY, usegoodcolor, save);
+	mb->calculate(threads);
+	mb->draw(image, filename);
+	delete mb;
 
 	sf::RenderWindow window = sf::RenderWindow({ static_cast<uint32_t>(resX), static_cast<uint32_t>(resY) }, "Mandlebrot", sf::Style::Titlebar | sf::Style::Close);
 	sf::View view(sf::FloatRect(0, 0, resX, resY));
